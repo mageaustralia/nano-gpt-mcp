@@ -5,6 +5,9 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
+import { writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const API_KEY = process.env.NANO_GPT_API_KEY;
 const BASE_URL = "https://nano-gpt.com/api";
@@ -201,6 +204,7 @@ async function handleGenerateImage({ model, prompt, size, n }) {
     prompt,
     size: size || "1024x1024",
     n: n || 1,
+    response_format: "url",
   };
 
   const resp = await fetch(`${BASE_URL}/v1/images/generations`, {
@@ -222,8 +226,18 @@ async function handleGenerateImage({ model, prompt, size, n }) {
   if (images.length === 0) return "No images returned";
 
   const lines = images.map((img, i) => {
-    const url = img.url || (img.b64_json ? "[base64 data]" : "no url");
-    return `Image ${i + 1}: ${url}`;
+    if (img.url) {
+      return `Image ${i + 1}: ${img.url}`;
+    }
+    // Fallback: save base64 to temp file
+    if (img.b64_json) {
+      const ext = img.b64_json.startsWith("/9j/") ? "jpg" : "png";
+      const filename = `nanogpt-${Date.now()}-${i + 1}.${ext}`;
+      const filepath = join(tmpdir(), filename);
+      writeFileSync(filepath, Buffer.from(img.b64_json, "base64"));
+      return `Image ${i + 1}: saved to ${filepath}`;
+    }
+    return `Image ${i + 1}: no data returned`;
   });
 
   return lines.join("\n") + costFooter(data);
